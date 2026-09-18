@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalRole {
+  SUPER_ADMIN
+}
+
+enum TenantRole {
+  COMPANY_ADMIN
+  MANAGER
+  DATA_ENTRY
+}
+
+enum BusOwnership {
+  OWNED
+  LEASED
+  CONTRACTED
+}
+
+enum ExpenseCategory {
+  FUEL
+  TOLL
+  PARKING
+  FOOD
+  DRIVER_ALLOWANCE
+  REPAIRS
+  OTHER
+}
+
+enum TripStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model Tenant {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  contactEmail String
+  contactPhone String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users      User[]
+  buses      Bus[]
+  drivers    Driver[]
+  conductors Conductor[]
+  routes     Route[]
+  trips      Trip[]
+
+  @@index([slug])
+}
+
+model User {
+  id               String      @id @default(cuid())
+  tenantId         String?
+  email            String      @unique
+  passwordHash     String
+  fullName         String
+  phone            String?
+  role             TenantRole?
+  globalRole       GlobalRole?
+  isActive         Boolean     @default(true)
+  refreshTokenHash String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  tenant       Tenant? @relation(fields: [tenantId], references: [id])
+  createdTrips Trip[]  @relation("TripCreatedBy")
+
+  @@index([tenantId])
+}
+
+model Bus {
+  id              String       @id @default(cuid())
+  tenantId        String
+  busNumber       String
+  type            String
+  capacity        Int
+  ownership       BusOwnership @default(OWNED)
+  insuranceExpiry DateTime?
+  fitnessExpiry   DateTime?
+  permitExpiry    DateTime?
+  pucExpiry       DateTime?
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  trips       Trip[]
+  drivers     Driver[]
+  conductors  Conductor[]
+
+  @@unique([tenantId, busNumber])
+  @@index([tenantId])
+}
+
+model Driver {
+  id            String    @id @default(cuid())
+  tenantId      String
+  name          String
+  phone         String?
+  licenseNumber String?
+  licenseExpiry DateTime?
+  salaryRate    Decimal?  @db.Decimal(10, 2)
+  allowanceRate Decimal?  @db.Decimal(10, 2)
+  assignedBusId String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  assignedBus Bus?   @relation(fields: [assignedBusId], references: [id])
+  trips       Trip[] @relation("TripDriver")
+
+  @@index([tenantId])
+}
+
+model Conductor {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  phone         String?
+  allowanceRate Decimal? @db.Decimal(10, 2)
+  assignedBusId String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  assignedBus Bus?   @relation(fields: [assignedBusId], references: [id])
+  trips       Trip[] @relation("TripConductor")
+
+  @@index([tenantId])
+}
+
+model Route {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  source              String
+  destination         String
+  distanceKm          Decimal  @db.Decimal(8, 2)
+  expectedFare        Decimal? @db.Decimal(10, 2)
+  expectedDurationMin Int?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  trips  Trip[]
+
+  @@index([tenantId])
+  @@index([tenantId, source, destination])
+}
+
+model Trip {
+  id          String     @id @default(cuid())
+  tenantId    String
+  tripDate    DateTime
+  busId       String
+  routeId     String
+  driverId    String?
+  conductorId String?
+  distanceKm     Decimal?   @db.Decimal(8, 2)
+  passengerCount Int?
+  parcelCount    Int?
+  status         TripStatus @default(COMPLETED)
+  notes          String?    @db.Text
+  createdById String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  bus       Bus        @relation(fields: [busId], references: [id])
+  route     Route      @relation(fields: [routeId], references: [id])
+  driver    Driver?    @relation("TripDriver", fields: [driverId], references: [id])
+  conductor Conductor? @relation("TripConductor", fields: [conductorId], references: [id])
+  createdBy User?      @relation("TripCreatedBy", fields: [createdById], references: [id])
+
+  expenses TripExpense[]
+  income   TripIncome?
+
+  @@index([tenantId, tripDate])
+  @@index([tenantId, busId])
+  @@index([tenantId, routeId])
+  @@index([tenantId, driverId])
+}
+
+model TripExpense {
+  id         String          @id @default(cuid())
+  tenantId   String
+  tripId     String
+  category   ExpenseCategory
+  amount     Decimal         @db.Decimal(10, 2)
+  notes      String?
+  receiptUrl String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tripId])
+  @@index([tenantId, category])
+}
+
+model TripIncome {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tripId      String   @unique
+  ticketSales Decimal  @db.Decimal(10, 2) @default(0)
+  otherIncome Decimal  @db.Decimal(10, 2) @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tripId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+}

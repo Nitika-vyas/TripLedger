@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Environment files — never commit real secrets/credentials.
+# Only *.env.example files (no leading dot) should be tracked.
+.env
+.env.*
+!.env.example
+!*/.env.example
+
+# Uploaded user content (receipts etc.) — never commit runtime data
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Claude Code local tooling config (not project source)
+.claude/
